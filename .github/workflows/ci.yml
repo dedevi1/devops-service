@@ -18,8 +18,23 @@ jobs:
       - name: Run container
         run: docker run -d --name svc -p 8080:8080 devops-service
 
-      - name: Wait
-        run: sleep 5
+      - name: Wait for service
+        run: |
+          for i in {1..10}; do
+            if curl -fsS http://localhost:8080/health >/dev/null; then
+              echo "healthy"
+              exit 0
+            fi
+            echo "waiting..."
+            sleep 1
+          done
+          echo "healthcheck failed"
+          exit 20
 
-      - name: Health endpoint
-        run: curl -f http://localhost:8080/health
+      - name: Logs (always)
+        if: always()
+        run: docker logs svc || true
+
+      - name: Cleanup (always)
+        if: always()
+        run: docker rm -f svc || true
