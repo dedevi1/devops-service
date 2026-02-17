@@ -1,21 +1,40 @@
-from http.server import BaseHTTPRequestHandler, HTTPServer
-import os
+name: CI
 
-class Handler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        if self.path == "/health":
-            if os.getenv("FAIL") == "1":
-                self.send_response(500)
-                self.end_headers()
-                self.wfile.write(b"FAIL")
-            else:
-                self.send_response(200)
-                self.end_headers()
-                self.wfile.write(b"OK")
-        else:
-            self.send_response(200)
-            self.end_headers()
-            self.wfile.write(b"Service running")
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
 
-server = HTTPServer(("0.0.0.0", 8080), Handler)
-server.serve_forever()
+jobs:
+  build-and-healthcheck:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build image
+        run: docker build -t devops-service .
+
+      - name: Run container
+        run: docker run -d --name svc -p 8080:8080 devops-service
+
+      - name: Wait for service
+        run: |
+          for i in {1..10}; do
+            if curl -fsS http://localhost:8080/health >/dev/null; then
+              echo "healthy"
+              exit 0
+            fi
+            echo "waiting..."
+            sleep 1
+          done
+          echo "healthcheck failed"
+          exit 20
+
+      - name: Logs (always)
+        if: always()
+        run: docker logs svc || true
+
+      - name: Cleanup (always)
+        if: always()
+        run: docker rm -f svc || true
